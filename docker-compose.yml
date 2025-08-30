@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  video-generator:
+    build: .
+    container_name: video-generator
+    environment:
+      - API_URL=http://localhost:3100/api/generate-video
+      - RSYNC_SOURCE=/root/code/price-data/data/output
+      - RSYNC_DEST=root@112.126.78.105:~/web/x
+      - SSH_KEY_PATH=/root/.ssh/id_rsa
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./logs:/app/logs
+      - ./ssh-keys:/root/.ssh:ro
+      - ./data:/root/code/price-data/data
+    networks:
+      - video-gen-network
+    restart: "no"
+    # 手动运行模式，不自动启动
+    profiles:
+      - manual
+
+  # 定时调度服务
+  scheduler:
+    image: alpine:latest
+    container_name: video-generator-scheduler
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs:/app/logs
+    command: >
+      sh -c '
+        apk add --no-cache docker-cli tzdata &&
+        ln -snf /usr/share/zoneinfo/$$TZ /etc/localtime &&
+        echo "$$TZ" > /etc/timezone &&
+        echo "0 14 * * * cd /app && docker-compose run --rm video-generator" > /etc/crontabs/root &&
+        echo "Starting cron scheduler for daily video generation at 2PM CST..." &&
+        crond -f -l 2
+      '
+    depends_on:
+      - video-generator
+    restart: unless-stopped
+    networks:
+      - video-gen-network
+
+networks:
+  video-gen-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local

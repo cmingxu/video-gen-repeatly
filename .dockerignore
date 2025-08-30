@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+
+# Logs
+logs/
+*.log
+
+# SSH keys (will be mounted as volume)
+ssh-keys/
+
+# Data directory (will be mounted as volume)
+data/
+
+# Environment files
+.env
+.env.example
+
+# Docker files
+docker-compose.yml
+.dockerignore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
