@@ -9,20 +9,15 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件
+# 复制依赖文件并安装
 COPY requirements.txt .
-
-# 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
 COPY video_generator.py .
 
-# 创建日志目录
-RUN mkdir -p /app/logs
-
-# 创建SSH目录
-RUN mkdir -p /root/.ssh
+# 创建必要目录
+RUN mkdir -p /app/logs /app/data /root/.ssh
 
 # 设置SSH配置
 RUN echo "Host *" >> /root/.ssh/config && \
@@ -39,5 +34,5 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # 设置执行权限
 RUN chmod +x video_generator.py
 
-# 默认命令
+# 默认启动调度器
 CMD ["python", "video_generator.py"]

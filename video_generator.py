@@ -11,13 +11,19 @@ import logging
 from datetime import datetime
 import sys
 import os
+import time
+import schedule
+from threading import Thread
+
+# 创建日志目录
+os.makedirs('logs', exist_ok=True)
 
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/app/logs/video_generator.log'),
+        logging.FileHandler('logs/video_generator.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -25,9 +31,10 @@ logger = logging.getLogger(__name__)
 
 # 配置参数
 API_URL = os.getenv('API_URL', 'http://localhost:3100/api/generate-video')
-RSYNC_SOURCE = os.getenv('RSYNC_SOURCE', '/root/code/price-data/data/output')
+RSYNC_SOURCE = os.getenv('RSYNC_SOURCE', './data/output')
 RSYNC_DEST = os.getenv('RSYNC_DEST', 'root@112.126.78.105:~/web/x')
-SSH_KEY_PATH = os.getenv('SSH_KEY_PATH', '/root/.ssh/id_rsa')
+SSH_KEY_PATH = os.getenv('SSH_KEY_PATH', '~/.ssh/id_rsa')
+SCHEDULE_TIME = os.getenv('SCHEDULE_TIME', '14:00')  # 2PM CST
 
 def generate_video_for_category(category: str, today: str) -> bool:
     """
@@ -77,11 +84,14 @@ def sync_files() -> bool:
     try:
         logger.info("开始同步文件...")
         
+        # 展开SSH密钥路径
+        ssh_key_path = os.path.expanduser(SSH_KEY_PATH)
+        
         # 构建rsync命令
         cmd = [
             'rsync',
             '-avz',
-            '-e', f'ssh -i {SSH_KEY_PATH} -o StrictHostKeyChecking=no',
+            '-e', f'ssh -i {ssh_key_path} -o StrictHostKeyChecking=no',
             RSYNC_SOURCE,
             RSYNC_DEST
         ]
@@ -110,9 +120,9 @@ def sync_files() -> bool:
         logger.error(f"文件同步异常: {str(e)}")
         return False
 
-def main():
+def run_video_generation():
     """
-    主函数
+    执行视频生成任务
     """
     logger.info("=== 视频生成任务开始 ===")
     
@@ -140,16 +150,61 @@ def main():
         logger.warning(f"失败的类别: {', '.join(failed_categories)}")
     
     # 同步文件
-    if sync_files():
+    sync_success = sync_files()
+    if sync_success:
         logger.info("所有任务完成")
     else:
         logger.error("文件同步失败，但视频生成任务已完成")
     
     logger.info("=== 视频生成任务结束 ===")
+    return len(failed_categories) == 0 and sync_success
+
+def run_scheduler():
+    """
+    运行调度器
+    """
+    logger.info(f"启动调度器，每日 {SCHEDULE_TIME} 执行视频生成任务")
     
-    # 如果有失败的任务，返回非零退出码
-    if failed_categories or not sync_files():
-        sys.exit(1)
+    # 设置定时任务
+    schedule.every().day.at(SCHEDULE_TIME).do(run_video_generation)
+    
+    logger.info("调度器已启动，等待执行时间...")
+    logger.info("按 Ctrl+C 停止程序")
+    
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # 每分钟检查一次
+    except KeyboardInterrupt:
+        logger.info("收到停止信号，正在退出...")
+        sys.exit(0)
+
+def main():
+    """
+    主函数
+    """
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '--run-once':
+            # 立即执行一次
+            logger.info("立即执行模式")
+            success = run_video_generation()
+            sys.exit(0 if success else 1)
+        elif sys.argv[1] == '--help':
+            print("使用方法:")
+            print("  python video_generator.py           # 启动定时调度器")
+            print("  python video_generator.py --run-once # 立即执行一次")
+            print("  python video_generator.py --help     # 显示帮助信息")
+            print("")
+            print("环境变量:")
+            print(f"  API_URL={API_URL}")
+            print(f"  RSYNC_SOURCE={RSYNC_SOURCE}")
+            print(f"  RSYNC_DEST={RSYNC_DEST}")
+            print(f"  SSH_KEY_PATH={SSH_KEY_PATH}")
+            print(f"  SCHEDULE_TIME={SCHEDULE_TIME}")
+            sys.exit(0)
+    
+    # 默认启动调度器
+    run_scheduler()
 
 if __name__ == '__main__':
     main()
